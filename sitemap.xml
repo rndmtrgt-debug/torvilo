@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://torvilo.au/</loc><lastmod>2026-10-06</lastmod></url>
-  <url><loc>https://torvilo.au/about.html</loc><lastmod>2026-10-06</lastmod></url>
+  <url><loc>https://torvilo.au/</loc><lastmod>2026-10-18</lastmod></url>
+  <url><loc>https://torvilo.au/about.html</loc><lastmod>2026-10-18</lastmod></url>
   <url><loc>https://torvilo.au/privacy.html</loc><lastmod>2026-10-06</lastmod></url>
   <url><loc>https://torvilo.au/disclaimer.html</loc><lastmod>2026-10-06</lastmod></url>
   <url><loc>https://torvilo.au/tools/pay-tax.html</loc><lastmod>2026-10-06</lastmod></url>
@@ -18,7 +18,7 @@
   <url><loc>https://torvilo.au/guides/check-your-pay.html</loc><lastmod>2026-10-06</lastmod></url>
   <url><loc>https://torvilo.au/guides/gig-expenses.html</loc><lastmod>2026-10-06</lastmod></url>
   <url><loc>https://torvilo.au/contact.html</loc><lastmod>2026-10-06</lastmod></url>
-  <url><loc>https://torvilo.au/guides.html</loc><lastmod>2026-10-06</lastmod></url>
+  <url><loc>https://torvilo.au/guides.html</loc><lastmod>2026-10-18</lastmod></url>
   <url><loc>https://torvilo.au/guides/payslip.html</loc><lastmod>2026-10-06</lastmod></url>
   <url><loc>https://torvilo.au/guides/employment-types.html</loc><lastmod>2026-10-06</lastmod></url>
   <url><loc>https://torvilo.au/guides/penalty-rates.html</loc><lastmod>2026-10-06</lastmod></url>
@@ -26,4 +26,8 @@
   <url><loc>https://torvilo.au/guides/work-records.html</loc><lastmod>2026-10-06</lastmod></url>
   <url><loc>https://torvilo.au/guides/gross-vs-net-pay.html</loc><lastmod>2026-10-06</lastmod></url>
   <url><loc>https://torvilo.au/guides/compare-job-offers.html</loc><lastmod>2026-10-18</lastmod></url>
+  <url><loc>https://torvilo.au/resources.html</loc><lastmod>2026-10-18</lastmod></url>
+  <url><loc>https://torvilo.au/guides/casual-vs-permanent-pay.html</loc><lastmod>2026-10-18</lastmod></url>
+  <url><loc>https://torvilo.au/guides/budget-irregular-income.html</loc><lastmod>2026-10-18</lastmod></url>
+  <url><loc>https://torvilo.au/guides/changing-jobs-checklist.html</loc><lastmod>2026-10-18</lastmod></url>
 </urlset>
