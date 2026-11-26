@@ -55,7 +55,7 @@ jobs:
           })().catch(e=>{console.error(e);process.exitCode=1});
           
           NODE
-          node mobile-qa.cjs
+          HOME=/root node mobile-qa.cjs
 
   crawl:
     runs-on: ubuntu-latest
