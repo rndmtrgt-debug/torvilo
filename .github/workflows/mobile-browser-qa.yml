@@ -1,0 +1,58 @@
+name: Live mobile browser QA
+on:
+  pull_request:
+    branches: [main]
+permissions:
+  contents: read
+jobs:
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    container: mcr.microsoft.com/playwright:v1.51.1-noble
+    steps:
+      - name: Install pinned Playwright
+        run: npm install --no-save --ignore-scripts playwright@1.51.1
+      - name: Exercise production site without ads
+        shell: bash
+        run: |
+          cat > mobile-qa.cjs <<'NODE'
+          const { chromium, webkit, devices } = require('playwright');
+          const assert = require('node:assert/strict');
+          const fs = require('node:fs/promises');
+          const base = 'https://torvilo.au';
+          const configs = [
+            ['Android 360px', chromium, { ...devices['Pixel 7'], viewport:{width:360,height:800} }],
+            ['Android 412px', chromium, { ...devices['Pixel 7'], viewport:{width:412,height:915} }],
+            ['iPhone Safari 390px', webkit, { ...devices['iPhone 13'], viewport:{width:390,height:844} }]
+          ];
+          let failures = 0;
+          (async()=>{
+          for(const [name,engine,config] of configs){
+           const browser=await engine.launch({headless:true});
+           const ctx=await browser.newContext({...config,acceptDownloads:true});
+           // Avoid artificial ad impressions and analytics events.
+           await ctx.route('**/*', route => ['torvilo.au','www.torvilo.au'].includes(new URL(route.request().url()).hostname) ? route.continue() : route.abort());
+           const p=await ctx.newPage(); const errors=[];
+           p.on('pageerror',e=>errors.push(e.message));
+           const go=async(path,status=200)=>{const r=await p.goto(base+path,{waitUntil:'domcontentloaded'}); assert.equal(r.status(),status);};
+           const fill=async(id,value)=>p.locator('#'+id).fill(String(value));
+           const clickCalc=()=>p.getByRole('button',{name:'Calculate',exact:true}).click();
+           const output=()=>p.locator('#result').innerText();
+           const width=async()=>{const dims=await p.evaluate(()=>({w:document.documentElement.clientWidth,s:document.documentElement.scrollWidth}));assert.ok(dims.s<=dims.w+2,JSON.stringify(dims));};
+           const test=async(label,fn)=>{try{await fn();console.log('PASS | '+name+' | '+label)}catch(e){failures++;console.log('FAIL | '+name+' | '+label+' | '+e.message)}};
+           await test('Homepage and resource navigation',async()=>{await go('/');await width();await p.locator('header a[href="resources.html"]').click();await p.waitForURL('**/resources.html');await width();});
+           await test('All calculator and tracker page widths',async()=>{for(const page of ['shift-pay','pay-tax','shift-tracker','overtime-penalty','hourly-annual-salary','annual-hourly','breaks','tips','delivery-profit','income-target']){await go('/tools/'+page+'.html');await width();}});
+           await test('Shift pay and invalid break',async()=>{await go('/tools/shift-pay.html');await fill('rate',30);await fill('hours',8);await fill('break',30);await fill('multi',1);await clickCalc();assert.match(await output(),/\$225\.00/);await fill('break',481);await clickCalc();assert.match(await output(),/cannot be longer/i);});
+           await test('Pay tax frequency and controls',async()=>{await go('/tools/pay-tax.html');await fill('ptGross',1500);await p.locator('#ptPeriods').selectOption('52');await p.locator('#ptMedicare').check();await p.locator('#ptStsl').uncheck();await clickCalc();assert.match(await output(),/\$1,202\.31/);await fill('ptGross',3000);await p.locator('#ptPeriods').selectOption('26');await clickCalc();assert.match(await output(),/\$2,404\.62/);await p.locator('#ptMedicare').uncheck();await clickCalc();assert.match(await output(),/\$2,464\.62/);});
+           await test('Overtime, breaks, salary and target calculation',async()=>{await go('/tools/overtime-penalty.html');for(const [id,v] of Object.entries({opRate:30,opOrd:8,op15:2,op20:1,opCustomHours:0,opCustomMulti:2.5}))await fill(id,v);await clickCalc();assert.match(await output(),/\$390\.00/);await go('/tools/breaks.html');await fill('length',8);await fill('break',30);await clickCalc();assert.match(await output(),/7\.50/);await go('/tools/hourly-annual-salary.html');await fill('salaryRate',30);await fill('salaryHours',38);await fill('salaryWeeks',52);await clickCalc();assert.match(await output(),/\$59,280\.00/);await go('/tools/income-target.html');await fill('target',300);await fill('rate',30);await fill('multi',1);await clickCalc();assert.match(await output(),/10\.00/);});
+           await test('Tracker add, persist, CSV and clear',async()=>{await go('/tools/shift-tracker.html');await p.evaluate(()=>localStorage.removeItem('shiftmate_tracker_v3'));await p.reload();let row=p.locator('#trackerBody tr').first();await row.getByLabel('Shift date').fill('2026-11-27');await row.getByLabel('Paid hours').fill('8');await row.getByLabel('Hourly rate').fill('30');await row.getByLabel('Tips').fill('10');assert.match(await p.locator('#trackerResult').innerText(),/\$250\.00/);await p.getByRole('button',{name:'+ Add shift',exact:true}).click();assert.equal(await p.locator('#trackerBody tr').count(),2);await p.reload();assert.equal(await p.locator('#trackerBody tr').count(),2);assert.equal(await p.locator('#trackerBody tr').first().getByLabel('Hourly rate').inputValue(),'30');const downloading=p.waitForEvent('download');await p.getByRole('button',{name:'Export CSV',exact:true}).click();const d=await downloading;assert.equal(d.suggestedFilename(),'torvilo-shifts.csv');assert.match(await fs.readFile(await d.path(),'utf8'),/250\.00/);p.once('dialog',d=>d.accept());await p.getByRole('button',{name:'Clear',exact:true}).click();assert.equal(await p.locator('#trackerBody tr').first().getByLabel('Paid hours').inputValue(),'');await p.reload();assert.equal(await p.locator('#trackerBody tr').first().getByLabel('Paid hours').inputValue(),'');});
+           await test('Five real Excel downloads',async()=>{await go('/resources.html');const links=p.locator('a[href$=".xlsx"]');assert.equal(await links.count(),5);for(let i=0;i<5;i++){const wait=p.waitForEvent('download');await links.nth(i).click();const d=await wait;assert.match(d.suggestedFilename(),/\.xlsx$/);const bytes=await fs.readFile(await d.path());assert.equal(bytes.subarray(0,2).toString(),'PK');assert.ok(bytes.length>1000);}});
+           await test('Nested 404 recovery',async()=>{await go('/tools/qa-mobile-nonexistent',404);await width();await p.getByRole('link',{name:'Go home'}).click();await p.waitForURL('**/index.html');assert.match(await p.title(),/TORVILO/);});
+           await test('No uncaught JavaScript errors',async()=>assert.deepEqual(errors,[]));
+           await ctx.close();await browser.close();
+          }
+          console.log('TOTAL FAILURES: '+failures);process.exitCode=failures?1:0;
+          })().catch(e=>{console.error(e);process.exitCode=1});
+          
+          NODE
+          node mobile-qa.cjs
