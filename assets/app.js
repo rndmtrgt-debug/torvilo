@@ -7,7 +7,7 @@ const showError=m=>{const r=el('result');if(r)r.textContent=m};
 
 function residentTax2627(x){if(x<=18200)return 0;if(x<=45000)return(x-18200)*.15;if(x<=135000)return 4020+(x-45000)*.30;if(x<=190000)return 31020+(x-135000)*.37;return 51370+(x-190000)*.45}
 function litoEstimate(x){if(x<=37500)return 700;if(x<=45000)return Math.max(0,700-(x-37500)*.05);if(x<=66667)return Math.max(0,325-(x-45000)*.015);return 0}
-function stslEstimate2627(x){if(x<=69528)return 0;if(x<=129717)return(x-69528)*.15;if(x<=186050)return 9028.35+(x-129717)*.17;return x*.10}
+function stslEstimate2627(x){if(x<=69528)return 0;if(x<=129717)return(x-69528)*.15;if(x<=186050)return 9028+(x-129717)*.17;return x*.10}
 function medicareEstimate(x){if(x<=28011)return 0;if(x<35013)return Math.min(x*.02,(x-28011)*.10);return x*.02}
 function taxSuperEstimate(gross,annualGross,ordinaryGross,periods){const annualTax=residentTax2627(annualGross),tax=annualTax/periods,net=Math.max(0,gross-tax),superAmt=Math.max(0,ordinaryGross)*.12;return{tax,net,superAmt}}
 function shiftCalc(){try{const h=nn('hours','shift length'),b=nn('break','unpaid break'),r=nn('rate','hourly rate'),m=pos('multi','rate multiplier');if(b>h*60)throw new Error('Unpaid break cannot be longer than the shift.');const p=h-b/60;if(p<=0)throw new Error('Enter a shift with more than zero paid hours.');const g=p*r*m;el('result').innerHTML=`Paid hours: ${p.toFixed(2)}<br><b>Estimated gross shift pay: ${money(g)}</b><br>Tax and take-home pay are not estimated from a single shift. Your actual withholding depends on your pay period and circumstances. <a href="pay-tax.html">Estimate take-home pay using your full pay-period gross.</a>`}catch(e){showError(e.message)}}
