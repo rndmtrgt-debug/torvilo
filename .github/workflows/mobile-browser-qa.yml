@@ -1,11 +1,11 @@
-name: Live mobile browser QA
+name: Live desktop, crawl and performance QA
 on:
   pull_request:
     branches: [main]
 permissions:
   contents: read
 jobs:
-  mobile:
+  desktop:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     container: mcr.microsoft.com/playwright:v1.51.1-noble
@@ -16,14 +16,14 @@ jobs:
         shell: bash
         run: |
           cat > mobile-qa.cjs <<'NODE'
-          const { chromium, webkit, devices } = require('playwright');
+          const { chromium, webkit, firefox, devices } = require('playwright');
           const assert = require('node:assert/strict');
           const fs = require('node:fs/promises');
           const base = 'https://torvilo.au';
           const configs = [
-            ['Android 360px', chromium, { ...devices['Pixel 7'], viewport:{width:360,height:800} }],
-            ['Android 412px', chromium, { ...devices['Pixel 7'], viewport:{width:412,height:915} }],
-            ['iPhone Safari 390px', webkit, { ...devices['iPhone 13'], viewport:{width:390,height:844} }]
+            ['Desktop Chromium 1366px', chromium, {viewport:{width:1366,height:768}}],
+            ['Desktop Firefox 1440px', firefox, {viewport:{width:1440,height:900}}],
+            ['Desktop WebKit 1920px', webkit, {viewport:{width:1920,height:1080}}]
           ];
           let failures = 0;
           (async()=>{
@@ -56,3 +56,45 @@ jobs:
           
           NODE
           node mobile-qa.cjs
+
+  crawl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    container: mcr.microsoft.com/playwright:v1.51.1-noble
+    steps:
+      - run: npm install --no-save --ignore-scripts playwright@1.51.1
+      - shell: bash
+        run: |
+          cat > test.cjs <<'NODE'
+          const {chromium}=require('playwright');const base='https://torvilo.au';
+          (async()=>{const browser=await chromium.launch();const ctx=await browser.newContext();const p=await ctx.newPage();const s=await ctx.request.get(base+'/sitemap.xml');if(!s.ok())throw Error('sitemap');const seeds=[...(await s.text()).matchAll(/<loc>\s*([^<]+)\s*<\/loc>/g)].map(x=>x[1].trim());const queue=[...new Set(seeds)],seen=new Map(),ids=new Map(),refs=new Map(),issues=[];
+          while(queue.length&&seen.size<250){const url=queue.shift();if(seen.has(url))continue;try{const res=await ctx.request.get(url,{timeout:15000});seen.set(url,res.status());if(!res.ok()){issues.push('HTTP '+res.status()+' '+url+' from '+JSON.stringify(refs.get(url)));continue;}if(!(res.headers()['content-type']||'').includes('text/html'))continue;
+          const data=await p.evaluate(html=>{const d=new DOMParser().parseFromString(html,'text/html');return {links:[...d.querySelectorAll('a[href],link[rel=stylesheet],script[src],img[src]')].map(e=>e.getAttribute('href')||e.getAttribute('src')),ids:[...d.querySelectorAll('[id],a[name]')].map(e=>e.id||e.getAttribute('name')),canonical:d.querySelector('link[rel=canonical]')?.getAttribute('href'),title:d.title,robots:d.querySelector('meta[name=robots]')?.content||''}},await res.text());ids.set(url,new Set(data.ids));if(seeds.includes(url)){if(data.canonical!==url)issues.push('CANONICAL '+url+' -> '+data.canonical);if(!data.title)issues.push('TITLE '+url);if(/noindex/i.test(data.robots))issues.push('NOINDEX '+url);}
+          for(const raw of data.links){let u;try{u=new URL(raw,res.url())}catch{continue}if(u.origin!==base)continue;const h=u.hash;u.hash='';const target=u.href;for(const key of [target,...(h?[target+h]:[])]){const a=refs.get(key)||[];if(!a.includes(url))a.push(url);refs.set(key,a);}if(!seen.has(target)&&!queue.includes(target))queue.push(target);}
+          }catch(e){seen.set(url,0);issues.push('ERROR '+url+' '+e.message)}}
+          for(const [target,sources] of refs){const i=target.indexOf('#');if(i<0)continue;const u=target.slice(0,i),id=decodeURIComponent(target.slice(i+1));if(ids.has(u)&&!ids.get(u).has(id))issues.push('ANCHOR '+target+' from '+sources.join(', '));}
+          console.log('CRAWL SUMMARY '+JSON.stringify({sitemap:seeds.length,visited:seen.size,html:ids.size,ok:[...seen.values()].filter(s=>s===200).length,remaining:queue.length,issues:issues.length}));for(const i of issues)console.log('CRAWL ISSUE '+i);await browser.close();if(issues.length||queue.length)process.exitCode=1})().catch(e=>{console.error(e);process.exitCode=1});
+          NODE
+          node test.cjs
+
+  performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    container: mcr.microsoft.com/playwright:v1.51.1-noble
+    steps:
+      - run: npm install --no-save --ignore-scripts playwright@1.51.1
+      - shell: bash
+        run: |
+          cat > test.cjs <<'NODE'
+          const {chromium}=require('playwright');
+          (async()=>{const browser=await chromium.launch();for(const mode of ['mobile','desktop'])for(const path of ['/','/tools/pay-tax.html','/resources.html']){
+           const ctx=await browser.newContext({viewport:mode==='mobile'?{width:390,height:844}:{width:1366,height:768},isMobile:mode==='mobile',deviceScaleFactor:mode==='mobile'?2:1,hasTouch:mode==='mobile'});
+           await ctx.route('**/*',r=>['torvilo.au','www.torvilo.au'].includes(new URL(r.request().url()).hostname)?r.continue():r.abort());
+           const p=await ctx.newPage();await p.addInitScript(()=>{window.qa={lcp:0,cls:0};new PerformanceObserver(l=>{for(const e of l.getEntries())window.qa.lcp=e.startTime}).observe({type:'largest-contentful-paint',buffered:true});new PerformanceObserver(l=>{for(const e of l.getEntries())if(!e.hadRecentInput)window.qa.cls+=e.value}).observe({type:'layout-shift',buffered:true});});
+           const cdp=await ctx.newCDPSession(p);if(mode==='mobile'){await cdp.send('Network.enable');await cdp.send('Network.emulateNetworkConditions',{offline:false,latency:150,downloadThroughput:200000,uploadThroughput:93750});await cdp.send('Emulation.setCPUThrottlingRate',{rate:4});}
+           await p.goto('https://torvilo.au'+path,{waitUntil:'load'});await p.waitForTimeout(1200);
+           console.log('PERF '+JSON.stringify({mode,path,...await p.evaluate(()=>{const n=performance.getEntriesByType('navigation')[0];return{ttfb:Math.round(n.responseStart),load:Math.round(n.loadEventEnd),fcp:Math.round(performance.getEntriesByName('first-contentful-paint')[0]?.startTime||0),lcp:Math.round(window.qa.lcp),cls:+window.qa.cls.toFixed(3),bytes:n.transferSize+performance.getEntriesByType('resource').reduce((s,r)=>s+r.transferSize,0)}})}));
+           await ctx.close();
+          }await browser.close()})().catch(e=>{console.error(e);process.exitCode=1});
+          NODE
+          node test.cjs
