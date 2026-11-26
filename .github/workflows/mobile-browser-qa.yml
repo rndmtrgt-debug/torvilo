@@ -99,3 +99,17 @@ jobs:
           }await browser.close()})().catch(e=>{console.error(e);process.exitCode=1});
           NODE
           node test.cjs
+
+  work_hours:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    container: mcr.microsoft.com/playwright:v1.51.1-noble
+    steps:
+      - run: npm install --no-save --ignore-scripts playwright@1.51.1
+      - shell: bash
+        run: |
+          cat > hours.cjs <<'NODE'
+          const {chromium,webkit,devices}=require('playwright');const assert=require('node:assert/strict');
+          (async()=>{for(const [name,engine,opts] of [['Android',chromium,{...devices['Pixel 7'],viewport:{width:360,height:800}}],['iPhone',webkit,devices['iPhone 13']],['Desktop',chromium,{viewport:{width:1366,height:768}}]]){const b=await engine.launch();const c=await b.newContext(opts);await c.route('**/*',r=>new URL(r.request().url()).hostname==='torvilo.au'?r.continue():r.abort());const p=await c.newPage();const errors=[];p.on('pageerror',e=>errors.push(e.message));const resp=await p.goto('https://torvilo.au/tools/breaks.html',{waitUntil:'domcontentloaded'});assert.equal(resp.status(),200);assert.ok(await p.evaluate(()=>document.documentElement.scrollWidth<=document.documentElement.clientWidth+2));const calc=()=>p.getByRole('button',{name:'Calculate work hours',exact:true}).click();const out=()=>p.locator('#clockResult').innerText();await calc();assert.match(await out(),/7 h 30 min \(7\.50 decimal hours\)/);await p.locator('#clockStart').fill('22:00');await p.locator('#clockFinish').fill('05:30');await calc();assert.match(await out(),/Check start/);await p.locator('#clockOvernight').check();await calc();assert.match(await out(),/7 h 0 min \(7\.00 decimal hours\)/);await p.locator('#clockBreak').fill('500');await calc();assert.match(await out(),/no longer than the shift/);await p.locator('#length').fill('8');await p.locator('#break').fill('30');await p.getByRole('button',{name:'Calculate',exact:true}).click();assert.match(await p.locator('#result').innerText(),/7\.50/);assert.deepEqual(errors,[]);console.log('PASS '+name+' : layout, daytime, overnight, invalid input, existing calculator, JavaScript errors');await b.close()}})().catch(e=>{console.error(e);process.exitCode=1});
+          NODE
+          node hours.cjs
